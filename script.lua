@@ -71,6 +71,13 @@ local potionDuration = 45
 -- Vote config
 local voteGlitch = true
 local voteBaseplate = true
+local voteVoid = false
+local voteOverworld = false
+local voteArctic = false
+local voteDreamland = false
+local voteCave = false
+local voteOcean = false
+local voteLava = false
 
 -- ═══════════════════════════════════════════════════════════════
 --  UTILITY
@@ -160,136 +167,47 @@ end
 -- Craft all potions needed for N level-4 potions
 local function craftPotions(amount)
     for i = 1, amount do
-        -- 6x level 1
+        -- 6x level 1 (fastest safe speed)
         for _ = 1, 6 do
             pcall(function() CraftGear:FireServer("luck_01", 1) end)
-            task.wait(0.15)
+            task.wait(0.05)
         end
-        task.wait(0.3)
+        task.wait(0.1)
 
         -- 6x level 2 (uses the 6 level 1)
         for _ = 1, 6 do
             pcall(function() CraftGear:FireServer("luck_02", 1) end)
-            task.wait(0.15)
+            task.wait(0.05)
         end
-        task.wait(0.3)
+        task.wait(0.1)
 
         -- 6x level 3 (uses the 6 level 2)
         for _ = 1, 6 do
             pcall(function() CraftGear:FireServer("luck_03", 1) end)
-            task.wait(0.15)
+            task.wait(0.05)
         end
-        task.wait(0.3)
+        task.wait(0.1)
 
         -- 1x level 4 (uses the 6 level 3)
         pcall(function() CraftGear:FireServer("luck_04", 1) end)
-        task.wait(0.5)
+        task.wait(0.15)
     end
 end
 
--- Consume a specific potion by its ID
-local function consumePotion(potionId)
-    pcall(function()
-        ConsumeBoost:FireServer(potionId)
-    end)
-end
-
--- Drink potions — scans Backpack for potion tools and extracts IDs from their names
+-- Drink potions — fires ConsumeBoost with the string potion ID
+-- Uses 2 second delay between each drink to respect the map's cooldown
 local function drinkPotions(amount)
-    local consumed = 0
-
-    -- Method 1: Scan Backpack for potion tools and extract numeric ID from their name
-    local backpack = player:FindFirstChild("Backpack")
-    if backpack then
-        for _, item in pairs(backpack:GetChildren()) do
-            if consumed >= amount then break end
-            if item:IsA("Tool") then
-                local nameLower = item.Name:lower()
-                if nameLower:find("luck") or nameLower:find("potion") or nameLower:find("boost") then
-                    local potionId = tonumber(item.Name:match("%d+"))
-                    if potionId then
-                        consumePotion(potionId)
-                        consumed += 1
-                        task.wait(0.3)
-                    end
-                end
-            end
+    for i = 1, amount do
+        pcall(function() ConsumeBoost:FireServer("luck_04") end)
+        Rayfield:Notify({
+            Title = "Auto Potion",
+            Content = "Drinking potion " .. i .. "/" .. amount .. "...",
+            Duration = 3,
+        })
+        if i < amount then
+            task.wait(2) -- 2 second delay between drinks (map cooldown)
         end
     end
-
-    -- Method 2: Also check the Character (equipped tools)
-    if consumed < amount and player.Character then
-        for _, item in pairs(player.Character:GetChildren()) do
-            if consumed >= amount then break end
-            if item:IsA("Tool") then
-                local nameLower = item.Name:lower()
-                if nameLower:find("luck") or nameLower:find("potion") or nameLower:find("boost") then
-                    local potionId = tonumber(item.Name:match("%d+"))
-                    if potionId then
-                        consumePotion(potionId)
-                        consumed += 1
-                        task.wait(0.3)
-                    end
-                end
-            end
-        end
-    end
-
-    -- Method 3: Try with gear attribute IDs if name didn't have a number
-    if consumed < amount and backpack then
-        for _, item in pairs(backpack:GetChildren()) do
-            if consumed >= amount then break end
-            if item:IsA("Tool") then
-                local nameLower = item.Name:lower()
-                if nameLower:find("luck") or nameLower:find("potion") or nameLower:find("boost") then
-                    local potionId = item:GetAttribute("BoostId") or item:GetAttribute("GearId") or item:GetAttribute("Id")
-                    if potionId then
-                        consumePotion(potionId)
-                        consumed += 1
-                        task.wait(0.3)
-                    end
-                end
-            end
-        end
-    end
-
-    -- Method 4: Scan player data folders for boost entries
-    if consumed < amount then
-        local dataFolders = {"Data", "PlayerData", "Gears", "Boosts", "Inventory"}
-        for _, folderName in pairs(dataFolders) do
-            if consumed >= amount then break end
-            local folder = player:FindFirstChild(folderName)
-            if folder then
-                for _, child in pairs(folder:GetDescendants()) do
-                    if consumed >= amount then break end
-                    local childLower = child.Name:lower()
-                    if childLower:find("luck") or childLower:find("boost") then
-                        local id = nil
-                        if child:IsA("ValueBase") then
-                            id = child.Value
-                        else
-                            id = child:GetAttribute("Id") or child:GetAttribute("BoostId")
-                        end
-                        if id then
-                            consumePotion(id)
-                            consumed += 1
-                            task.wait(0.3)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Method 5: Try string-based and no-arg approaches as last resort
-    if consumed < amount then
-        for i = 1, (amount - consumed) do
-            pcall(function() ConsumeBoost:FireServer("luck_04") end)
-            task.wait(0.2)
-        end
-    end
-
-    return consumed
 end
 
 -- Main potion system loop
@@ -342,22 +260,30 @@ local function startPotionSystem()
 end
 
 -- ═══════════════════════════════════════════════════════════════
---  AUTO VOTE MAPS — Votes for rare maps (Baseplate > Glitch)
+--  AUTO VOTE MAPS — Votes for rare maps (priority order)
 -- ═══════════════════════════════════════════════════════════════
 local function startAutoVote()
     autoVoteLoop = task.spawn(function()
         while autoVoteEnabled do
-            -- Priority: Baseplate > Glitch
-            -- Vote for the highest priority map that is enabled
-            if voteBaseplate then
-                pcall(function() SendVote:FireServer("baseplate") end)
-            end
-            if voteGlitch and not voteBaseplate then
-                pcall(function() SendVote:FireServer("glitch") end)
-            elseif voteGlitch and voteBaseplate then
-                -- Both enabled: still vote baseplate (priority), but also try glitch
-                -- The primary vote is baseplate; send glitch too in case baseplate isn't available
-                pcall(function() SendVote:FireServer("glitch") end)
+            -- Priority order: Baseplate > Glitch > Void > Overworld > Arctic > Dreamland > Cave > Ocean > Lava
+            -- All enabled maps get voted for
+            local voteMap = {
+                {enabled = voteBaseplate, name = "baseplate"},
+                {enabled = voteGlitch, name = "glitch"},
+                {enabled = voteVoid, name = "void"},
+                {enabled = voteOverworld, name = "overworld"},
+                {enabled = voteArctic, name = "arctic"},
+                {enabled = voteDreamland, name = "dreamland"},
+                {enabled = voteCave, name = "cave"},
+                {enabled = voteOcean, name = "ocean"},
+                {enabled = voteLava, name = "lava"},
+            }
+
+            for _, entry in ipairs(voteMap) do
+                if entry.enabled then
+                    pcall(function() SendVote:FireServer(entry.name) end)
+                    break -- Only vote for the highest priority enabled map
+                end
             end
 
             -- Re-vote periodically to ensure the vote sticks
@@ -520,7 +446,16 @@ local PotionToggle = PotionTab:CreateToggle({
 -- ═══════════════════════════════════════════════════════════════
 local VoteTab = Window:CreateTab("Auto Vote Maps", "vote")
 
-VoteTab:CreateSection("Select Rare Maps to Vote For")
+VoteTab:CreateSection("Select Maps to Vote For (priority order)")
+
+local BaseplateToggle = VoteTab:CreateToggle({
+    Name = "Vote for Baseplate (highest priority)",
+    CurrentValue = true,
+    Flag = "VoteBaseplate",
+    Callback = function(Value)
+        voteBaseplate = Value
+    end,
+})
 
 local GlitchToggle = VoteTab:CreateToggle({
     Name = "Vote for Glitch",
@@ -531,12 +466,66 @@ local GlitchToggle = VoteTab:CreateToggle({
     end,
 })
 
-local BaseplateToggle = VoteTab:CreateToggle({
-    Name = "Vote for Baseplate (highest priority)",
-    CurrentValue = true,
-    Flag = "VoteBaseplate",
+local VoidToggle = VoteTab:CreateToggle({
+    Name = "Vote for Void",
+    CurrentValue = false,
+    Flag = "VoteVoid",
     Callback = function(Value)
-        voteBaseplate = Value
+        voteVoid = Value
+    end,
+})
+
+local OverworldToggle = VoteTab:CreateToggle({
+    Name = "Vote for Overworld",
+    CurrentValue = false,
+    Flag = "VoteOverworld",
+    Callback = function(Value)
+        voteOverworld = Value
+    end,
+})
+
+local ArcticToggle = VoteTab:CreateToggle({
+    Name = "Vote for Arctic",
+    CurrentValue = false,
+    Flag = "VoteArctic",
+    Callback = function(Value)
+        voteArctic = Value
+    end,
+})
+
+local DreamlandToggle = VoteTab:CreateToggle({
+    Name = "Vote for Dreamland",
+    CurrentValue = false,
+    Flag = "VoteDreamland",
+    Callback = function(Value)
+        voteDreamland = Value
+    end,
+})
+
+local CaveToggle = VoteTab:CreateToggle({
+    Name = "Vote for Cave",
+    CurrentValue = false,
+    Flag = "VoteCave",
+    Callback = function(Value)
+        voteCave = Value
+    end,
+})
+
+local OceanToggle = VoteTab:CreateToggle({
+    Name = "Vote for Ocean",
+    CurrentValue = false,
+    Flag = "VoteOcean",
+    Callback = function(Value)
+        voteOcean = Value
+    end,
+})
+
+local LavaToggle = VoteTab:CreateToggle({
+    Name = "Vote for Lava",
+    CurrentValue = false,
+    Flag = "VoteLava",
+    Callback = function(Value)
+        voteLava = Value
     end,
 })
 
@@ -553,6 +542,49 @@ local VoteToggle = VoteTab:CreateToggle({
         else
             if autoVoteLoop then pcall(function() task.cancel(autoVoteLoop) end) end
         end
+    end,
+})
+
+-- ═══════════════════════════════════════════════════════════════
+--  TAB: TESTING
+-- ═══════════════════════════════════════════════════════════════
+local TestTab = Window:CreateTab("Testing", "bug")
+
+TestTab:CreateSection("Gear Switching")
+
+TestTab:CreateButton({
+    Name = "Switch Gear to Beyond Breaker",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("beyondbreaker") end)
+        Rayfield:Notify({
+            Title = "Testing",
+            Content = "Equipped Beyond Breaker!",
+            Duration = 3,
+        })
+    end,
+})
+
+TestTab:CreateButton({
+    Name = "Switch Gear to ExagoniosInverter",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("exagoniosinverter") end)
+        Rayfield:Notify({
+            Title = "Testing",
+            Content = "Equipped Exagonios Inverter!",
+            Duration = 3,
+        })
+    end,
+})
+
+TestTab:CreateButton({
+    Name = "Switch Gear to 404 Eradicator",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("404eradicator") end)
+        Rayfield:Notify({
+            Title = "Testing",
+            Content = "Equipped 404 Eradicator!",
+            Duration = 3,
+        })
     end,
 })
 
