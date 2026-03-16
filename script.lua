@@ -35,7 +35,6 @@ local Window = Rayfield:CreateWindow({
     LoadingTitle = "BLOCK MAYHEM X",
     LoadingSubtitle = "by ImNotNickzy",
     Theme = "Default",
-    ToggleUIKeybind = "Insert",
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
 
