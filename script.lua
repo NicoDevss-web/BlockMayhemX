@@ -68,16 +68,19 @@ local useBeyondBreaker = true
 local reEquipGear = "exagoniosinverter"
 local potionDuration = 45
 
--- Vote config
-local voteGlitch = true
-local voteBaseplate = true
-local voteVoid = false
-local voteOverworld = false
-local voteArctic = false
-local voteDreamland = false
-local voteCave = false
-local voteOcean = false
-local voteLava = false
+-- Vote config — ordered priority list
+local votePriority = {
+    {name = "baseplate",  label = "Baseplate",  enabled = true},
+    {name = "glitch",     label = "Glitch",     enabled = true},
+    {name = "void",       label = "Void",       enabled = false},
+    {name = "overworld",  label = "Overworld",  enabled = false},
+    {name = "arctic",     label = "Arctic",     enabled = false},
+    {name = "dreamland",  label = "Dreamland",  enabled = false},
+    {name = "cave",       label = "Cave",       enabled = false},
+    {name = "ocean",      label = "Ocean",      enabled = false},
+    {name = "lava",       label = "Lava",       enabled = false},
+}
+local selectedPriorityMap = "Baseplate" -- currently selected map in dropdown
 
 -- ═══════════════════════════════════════════════════════════════
 --  UTILITY
@@ -260,36 +263,52 @@ local function startPotionSystem()
 end
 
 -- ═══════════════════════════════════════════════════════════════
---  AUTO VOTE MAPS — Votes for rare maps (priority order)
+--  AUTO VOTE MAPS — Votes for highest-priority enabled map every 10s
 -- ═══════════════════════════════════════════════════════════════
+local function getHighestPriorityVote()
+    for _, entry in ipairs(votePriority) do
+        if entry.enabled then
+            return entry.name
+        end
+    end
+    return nil
+end
+
 local function startAutoVote()
     autoVoteLoop = task.spawn(function()
+        -- Fire immediately on enable
+        local mapName = getHighestPriorityVote()
+        if mapName then
+            pcall(function() SendVote:FireServer(mapName) end)
+        end
         while autoVoteEnabled do
-            -- Priority order: Baseplate > Glitch > Void > Overworld > Arctic > Dreamland > Cave > Ocean > Lava
-            -- All enabled maps get voted for
-            local voteMap = {
-                {enabled = voteBaseplate, name = "baseplate"},
-                {enabled = voteGlitch, name = "glitch"},
-                {enabled = voteVoid, name = "void"},
-                {enabled = voteOverworld, name = "overworld"},
-                {enabled = voteArctic, name = "arctic"},
-                {enabled = voteDreamland, name = "dreamland"},
-                {enabled = voteCave, name = "cave"},
-                {enabled = voteOcean, name = "ocean"},
-                {enabled = voteLava, name = "lava"},
-            }
-
-            for _, entry in ipairs(voteMap) do
-                if entry.enabled then
-                    pcall(function() SendVote:FireServer(entry.name) end)
-                    break -- Only vote for the highest priority enabled map
-                end
+            task.wait(10)
+            mapName = getHighestPriorityVote()
+            if mapName then
+                pcall(function() SendVote:FireServer(mapName) end)
             end
-
-            -- Re-vote periodically to ensure the vote sticks
-            task.wait(5)
         end
     end)
+end
+
+-- Helper: build a string showing the current priority order
+local function getPriorityString()
+    local parts = {}
+    for i, entry in ipairs(votePriority) do
+        local status = entry.enabled and "✔" or "✘"
+        parts[#parts + 1] = i .. ". " .. entry.label .. " [" .. status .. "]"
+    end
+    return table.concat(parts, "\n")
+end
+
+-- Helper: find index in votePriority by label
+local function findPriorityIndex(label)
+    for i, entry in ipairs(votePriority) do
+        if entry.label == label then
+            return i
+        end
+    end
+    return nil
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -442,90 +461,80 @@ local PotionToggle = PotionTab:CreateToggle({
 })
 
 -- ═══════════════════════════════════════════════════════════════
---  TAB: AUTO VOTE MAPS
+--  TAB: AUTO VOTE MAPS (with priority ordering)
 -- ═══════════════════════════════════════════════════════════════
 local VoteTab = Window:CreateTab("Auto Vote Maps", "vote")
 
-VoteTab:CreateSection("Select Maps to Vote For (priority order)")
+VoteTab:CreateSection("Enable / Disable Maps")
 
-local BaseplateToggle = VoteTab:CreateToggle({
-    Name = "Vote for Baseplate (highest priority)",
-    CurrentValue = true,
-    Flag = "VoteBaseplate",
-    Callback = function(Value)
-        voteBaseplate = Value
+-- Individual toggles for each map
+for _, entry in ipairs(votePriority) do
+    VoteTab:CreateToggle({
+        Name = "Vote for " .. entry.label,
+        CurrentValue = entry.enabled,
+        Flag = "Vote" .. entry.label,
+        Callback = function(Value)
+            entry.enabled = Value
+            -- Update the priority display
+            if PriorityLabel then
+                PriorityLabel:Set(getPriorityString())
+            end
+        end,
+    })
+end
+
+VoteTab:CreateSection("Priority Order")
+
+local PriorityLabel = VoteTab:CreateParagraph({
+    Title = "Current Priority (top = highest)",
+    Content = getPriorityString(),
+})
+
+local mapLabels = {}
+for _, entry in ipairs(votePriority) do
+    mapLabels[#mapLabels + 1] = entry.label
+end
+
+local PriorityDropdown = VoteTab:CreateDropdown({
+    Name = "Select Map to Reorder",
+    Options = mapLabels,
+    CurrentOption = {selectedPriorityMap},
+    MultipleOptions = false,
+    Flag = "PrioritySelect",
+    Callback = function(Options)
+        selectedPriorityMap = Options[1] or Options
     end,
 })
 
-local GlitchToggle = VoteTab:CreateToggle({
-    Name = "Vote for Glitch",
-    CurrentValue = true,
-    Flag = "VoteGlitch",
-    Callback = function(Value)
-        voteGlitch = Value
+VoteTab:CreateButton({
+    Name = "⬆ Move Up",
+    Callback = function()
+        local idx = findPriorityIndex(selectedPriorityMap)
+        if idx and idx > 1 then
+            votePriority[idx], votePriority[idx - 1] = votePriority[idx - 1], votePriority[idx]
+            PriorityLabel:Set(getPriorityString())
+            Rayfield:Notify({
+                Title = "Auto Vote",
+                Content = selectedPriorityMap .. " moved up to #" .. (idx - 1),
+                Duration = 2,
+            })
+        end
     end,
 })
 
-local VoidToggle = VoteTab:CreateToggle({
-    Name = "Vote for Void",
-    CurrentValue = false,
-    Flag = "VoteVoid",
-    Callback = function(Value)
-        voteVoid = Value
-    end,
-})
-
-local OverworldToggle = VoteTab:CreateToggle({
-    Name = "Vote for Overworld",
-    CurrentValue = false,
-    Flag = "VoteOverworld",
-    Callback = function(Value)
-        voteOverworld = Value
-    end,
-})
-
-local ArcticToggle = VoteTab:CreateToggle({
-    Name = "Vote for Arctic",
-    CurrentValue = false,
-    Flag = "VoteArctic",
-    Callback = function(Value)
-        voteArctic = Value
-    end,
-})
-
-local DreamlandToggle = VoteTab:CreateToggle({
-    Name = "Vote for Dreamland",
-    CurrentValue = false,
-    Flag = "VoteDreamland",
-    Callback = function(Value)
-        voteDreamland = Value
-    end,
-})
-
-local CaveToggle = VoteTab:CreateToggle({
-    Name = "Vote for Cave",
-    CurrentValue = false,
-    Flag = "VoteCave",
-    Callback = function(Value)
-        voteCave = Value
-    end,
-})
-
-local OceanToggle = VoteTab:CreateToggle({
-    Name = "Vote for Ocean",
-    CurrentValue = false,
-    Flag = "VoteOcean",
-    Callback = function(Value)
-        voteOcean = Value
-    end,
-})
-
-local LavaToggle = VoteTab:CreateToggle({
-    Name = "Vote for Lava",
-    CurrentValue = false,
-    Flag = "VoteLava",
-    Callback = function(Value)
-        voteLava = Value
+VoteTab:CreateButton({
+    Name = "⬇ Move Down",
+    Callback = function()
+        local idx = findPriorityIndex(selectedPriorityMap)
+        if idx and idx < #votePriority then
+            votePriority[idx], votePriority[idx + 1] = votePriority[idx + 1], votePriority[idx]
+            PriorityLabel:Set(getPriorityString())
+            Rayfield:Notify({
+                Title = "Auto Vote",
+                Content = selectedPriorityMap .. " moved down to #" .. (idx + 1),
+                Duration = 2,
+            })
+        end
     end,
 })
 
@@ -546,43 +555,77 @@ local VoteToggle = VoteTab:CreateToggle({
 })
 
 -- ═══════════════════════════════════════════════════════════════
---  TAB: TESTING
+--  TAB: UNIQUE GEARS
 -- ═══════════════════════════════════════════════════════════════
-local TestTab = Window:CreateTab("Testing", "bug")
+local GearsTab = Window:CreateTab("Unique Gears", "gem")
 
-TestTab:CreateSection("Gear Switching")
+GearsTab:CreateSection("Equip Unique Gears")
 
-TestTab:CreateButton({
-    Name = "Switch Gear to Beyond Breaker",
+GearsTab:CreateButton({
+    Name = "Equip Chrono Band",
     Callback = function()
-        pcall(function() EquipGear:FireServer("beyondbreaker") end)
+        pcall(function() EquipGear:FireServer("chronoband") end)
         Rayfield:Notify({
-            Title = "Testing",
-            Content = "Equipped Beyond Breaker!",
+            Title = "Unique Gears",
+            Content = "Equipped Chrono Band!",
             Duration = 3,
         })
     end,
 })
 
-TestTab:CreateButton({
-    Name = "Switch Gear to ExagoniosInverter",
+GearsTab:CreateButton({
+    Name = "Equip Terraform",
     Callback = function()
-        pcall(function() EquipGear:FireServer("exagoniosinverter") end)
+        pcall(function() EquipGear:FireServer("terraform") end)
         Rayfield:Notify({
-            Title = "Testing",
-            Content = "Equipped Exagonios Inverter!",
+            Title = "Unique Gears",
+            Content = "Equipped Terraform!",
             Duration = 3,
         })
     end,
 })
 
-TestTab:CreateButton({
-    Name = "Switch Gear to 404 Eradicator",
+GearsTab:CreateButton({
+    Name = "Equip Contract Papers",
     Callback = function()
-        pcall(function() EquipGear:FireServer("404eradicator") end)
+        pcall(function() EquipGear:FireServer("contractpapers") end)
         Rayfield:Notify({
-            Title = "Testing",
-            Content = "Equipped 404 Eradicator!",
+            Title = "Unique Gears",
+            Content = "Equipped Contract Papers!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip Summoners Crown",
+    Callback = function()
+        -- Try all possible argument variants
+        local variants = {"summonerscrown", "summoners_crown", "summoners crown"}
+        for _, v in ipairs(variants) do
+            pcall(function() EquipGear:FireServer(v) end)
+            task.wait(0.15)
+        end
+        Rayfield:Notify({
+            Title = "Unique Gears",
+            Content = "Tried equipping Summoners Crown (all variants)!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip The Ascender",
+    Callback = function()
+        -- Try all possible argument variants
+        local variants = {"theascender", "the_ascender", "the ascender"}
+        for _, v in ipairs(variants) do
+            pcall(function() EquipGear:FireServer(v) end)
+            task.wait(0.15)
+        end
+        Rayfield:Notify({
+            Title = "Unique Gears",
+            Content = "Tried equipping The Ascender (all variants)!",
             Duration = 3,
         })
     end,
