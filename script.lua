@@ -384,7 +384,7 @@ MainTab:CreateButton({
 -- ═══════════════════════════════════════════════════════════════
 local PotionTab = Window:CreateTab("Potions", "flask-conical")
 
-PotionTab:CreateSection("Configuration")
+PotionTab:CreateSection("Auto Potion Create")
 
 local PotionSlider = PotionTab:CreateSlider({
     Name = "Potions to Create",
@@ -398,65 +398,73 @@ local PotionSlider = PotionTab:CreateSlider({
     end,
 })
 
-local BBToggle = PotionTab:CreateToggle({
-    Name = "Use Beyond Breaker (before drinking)",
-    CurrentValue = true,
-    Flag = "UseBBToggle",
-    Callback = function(Value)
-        useBeyondBreaker = Value
-        if Value then
-            potionDuration = 45
-        else
-            potionDuration = 30
-        end
+PotionTab:CreateButton({
+    Name = "Craft Potions",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Auto Potion",
+            Content = "Crafting " .. potionCount .. " level 4 potions...",
+            Duration = 5,
+        })
+        craftPotions(potionCount)
     end,
 })
 
-local GearDropdown = PotionTab:CreateDropdown({
+PotionTab:CreateSection("Auto Potion Use")
+
+PotionTab:CreateToggle({
+    Name = "Auto Potion System",
+    CurrentValue = false,
+    Flag = "PotionSystem",
+    Callback = function(Value)
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Auto Potion Use non è ancora disponibile!",
+            Duration = 3,
+        })
+    end,
+})
+
+PotionTab:CreateToggle({
+    Name = "Use Beyond Breaker (before drinking)",
+    CurrentValue = false,
+    Flag = "UseBBToggle",
+    Callback = function(Value)
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Auto Potion Use non è ancora disponibile!",
+            Duration = 3,
+        })
+    end,
+})
+
+PotionTab:CreateDropdown({
     Name = "Gear to Re-equip After",
     Options = {"Exagonios Inverter", "404 Eradicator"},
     CurrentOption = {"Exagonios Inverter"},
     MultipleOptions = false,
     Flag = "ReEquipGear",
     Callback = function(Options)
-        local selected = Options[1] or Options
-        if selected == "Exagonios Inverter" then
-            reEquipGear = "exagoniosinverter"
-        elseif selected == "404 Eradicator" then
-            reEquipGear = "404eradicator"
-        end
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Auto Potion Use non è ancora disponibile!",
+            Duration = 3,
+        })
     end,
 })
 
-local DurationDropdown = PotionTab:CreateDropdown({
+PotionTab:CreateDropdown({
     Name = "Potion Duration",
     Options = {"30 min (no BB)", "45 min (with BB)"},
     CurrentOption = {"45 min (with BB)"},
     MultipleOptions = false,
     Flag = "PotionDuration",
     Callback = function(Options)
-        local selected = Options[1] or Options
-        if selected == "30 min (no BB)" then
-            potionDuration = 30
-        elseif selected == "45 min (with BB)" then
-            potionDuration = 45
-        end
-    end,
-})
-
-PotionTab:CreateSection("Control")
-
-local PotionToggle = PotionTab:CreateToggle({
-    Name = "Auto Potion System",
-    CurrentValue = false,
-    Flag = "PotionSystem",
-    Callback = function(Value)
-        potionSystemEnabled = Value
-        if Value then
-            startPotionSystem()
-        else
-            if potionLoop then pcall(function() task.cancel(potionLoop) end) end
-        end
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Auto Potion Use non è ancora disponibile!",
+            Duration = 3,
+        })
     end,
 })
 
@@ -555,9 +563,91 @@ local VoteToggle = VoteTab:CreateToggle({
 })
 
 -- ═══════════════════════════════════════════════════════════════
---  TAB: UNIQUE GEARS
+--  TAB: GEARS
 -- ═══════════════════════════════════════════════════════════════
-local GearsTab = Window:CreateTab("Unique Gears", "gem")
+local GearsTab = Window:CreateTab("Gears", "gem")
+
+GearsTab:CreateSection("Gears")
+
+GearsTab:CreateButton({
+    Name = "Equip Thermic Engine",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("thermicengine") end)
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Equipped Thermic Engine!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip Beyond Breaker",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("beyondbreaker") end)
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Equipped Beyond Breaker!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip Exagonios Inverter",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("exagoniosinverter") end)
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Equipped Exagonios Inverter!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip 404 Eradicator",
+    Callback = function()
+        pcall(function() EquipGear:FireServer("404eradicator") end)
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Equipped 404 Eradicator!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip Sacrinare Sacrificier",
+    Callback = function()
+        local variants = {"sacrinaresacrificer", "sacrinare_sacrificer", "sacrinare sacrificer"}
+        for _, v in ipairs(variants) do
+            pcall(function() EquipGear:FireServer(v) end)
+            task.wait(0.15)
+        end
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Tried equipping Sacrinare Sacrificier (all variants)!",
+            Duration = 3,
+        })
+    end,
+})
+
+GearsTab:CreateButton({
+    Name = "Equip Euphoria Enchanter",
+    Callback = function()
+        local variants = {"euphoriaenchanter", "euphoria_enchanter", "euphoria enchanter"}
+        for _, v in ipairs(variants) do
+            pcall(function() EquipGear:FireServer(v) end)
+            task.wait(0.15)
+        end
+        Rayfield:Notify({
+            Title = "Gears",
+            Content = "Tried equipping Euphoria Enchanter (all variants)!",
+            Duration = 3,
+        })
+    end,
+})
 
 GearsTab:CreateSection("Equip Unique Gears")
 
@@ -626,6 +716,35 @@ GearsTab:CreateButton({
         Rayfield:Notify({
             Title = "Unique Gears",
             Content = "Tried equipping The Ascender (all variants)!",
+            Duration = 3,
+        })
+    end,
+})
+
+-- ═══════════════════════════════════════════════════════════════
+--  TAB: UTILS
+-- ═══════════════════════════════════════════════════════════════
+local UtilsTab = Window:CreateTab("Utils", "wrench")
+
+UtilsTab:CreateSection("Shortcuts")
+
+UtilsTab:CreateButton({
+    Name = "Open Shop",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Open Shop non è ancora disponibile!",
+            Duration = 3,
+        })
+    end,
+})
+
+UtilsTab:CreateButton({
+    Name = "Open Summon",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Coming Soon",
+            Content = "Open Summon non è ancora disponibile!",
             Duration = 3,
         })
     end,
